@@ -1,0 +1,7 @@
+{
+  "name": "Assistente AI Voz",
+  "description": "Uma inteligência artificial pessoal ativada por voz para tirar dúvidas e conversar.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
