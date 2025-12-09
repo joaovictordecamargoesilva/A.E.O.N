@@ -46,8 +46,8 @@ const App: React.FC = () => {
                 return;
             }
             addLog("SECURE CONNECTION ESTABLISHED.");
+            addLog("CONNECTING TO GLOBAL INFORMATION GRID (GOOGLE SEARCH)...");
             
-            // Simula leitura de memória
             const memCount = localStorage.getItem('aeon_core_memory_v1') 
                 ? JSON.parse(localStorage.getItem('aeon_core_memory_v1')!).length 
                 : 0;
@@ -77,7 +77,7 @@ const App: React.FC = () => {
         setTimeout(() => {
             setBootStep(5);
             addLog("SYSTEM READY.");
-            addLog("PERSONALITY MATRIX: ADAPTED.");
+            addLog("PERSONALITY MATRIX: FEMALE_MODE_ACTIVE.");
             setTimeout(() => setIsBooting(false), 800);
         }, 4500);
     };
@@ -92,13 +92,28 @@ const App: React.FC = () => {
     }
   }, [messages, showLogs]);
 
-  // Carregamento de Vozes
+  // Carregamento de Vozes Avançado - FEMININO PRIORITÁRIO
   useEffect(() => {
     const loadVoices = () => {
       const voices = synthRef.current.getVoices();
-      let bestVoice = voices.find(v => v.lang === 'pt-BR' && v.name.includes('Google'));
-      if (!bestVoice) bestVoice = voices.find(v => v.lang === 'pt-BR');
-      voiceRef.current = bestVoice || voices[0];
+      const ptVoices = voices.filter(v => v.lang === 'pt-BR' || v.lang === 'pt_BR');
+
+      // Prioridade 1: Vozes conhecidas por serem femininas no iOS/MacOS
+      let bestVoice = ptVoices.find(v => v.name.includes('Luciana')); 
+      if (!bestVoice) bestVoice = ptVoices.find(v => v.name.includes('Joana'));
+      
+      // Prioridade 2: Voz do Google (Geralmente feminina de alta qualidade no Android)
+      if (!bestVoice) bestVoice = ptVoices.find(v => v.name.includes('Google'));
+      
+      // Prioridade 3: Vozes femininas do Windows
+      if (!bestVoice) bestVoice = ptVoices.find(v => v.name.includes('Francisca'));
+      
+      // Prioridade 4: Qualquer outra que não seja explicitamente masculina
+      if (!bestVoice) bestVoice = ptVoices.find(v => !v.name.toLowerCase().includes('male') && !v.name.toLowerCase().includes('felipe') && !v.name.toLowerCase().includes('daniel'));
+
+      // Fallback
+      voiceRef.current = bestVoice || ptVoices[0] || voices[0];
+      console.log("Voice Selected:", voiceRef.current?.name);
     };
 
     loadVoices();
@@ -134,7 +149,7 @@ const App: React.FC = () => {
                 const command = transcript.split(detectedWord)[1]?.trim(); 
                 
                 if (!command || command.length < 3) {
-                    speakText("Online.");
+                    speakText("Olá. Estou ouvindo.");
                 } else {
                     handleSendMessage(command);
                 }
@@ -218,32 +233,66 @@ const App: React.FC = () => {
     }, 1500);
   };
 
+  // ENGINE DE FALA HUMANIZADA
   const speakText = useCallback((text: string, onEndCallback?: () => void) => {
     if (!synthRef.current) return;
     if (recognitionRef.current) recognitionRef.current.abort();
-
+    
+    // Cancela qualquer fala anterior
     synthRef.current.cancel();
     setAppState(AppState.SPEAKING);
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'pt-BR';
-    if (voiceRef.current) utterance.voice = voiceRef.current;
-    utterance.rate = 1.1; 
-    utterance.pitch = 0.9;
-
-    utterance.onend = () => {
-        if (onEndCallback) {
-            onEndCallback();
-        } else {
-            setAppState(AppState.IDLE);
-            if (isSentinelMode) {
-                setTimeout(() => recognitionRef.current?.start(), 300);
-            }
-        }
-    };
+    // 1. Quebrar texto em frases para respirar
+    // Divide por pontos, exclamações, interrogações e quebras de linha, mantendo a pontuação
+    const sentences = text.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [text];
     
-    utterance.onerror = () => setAppState(AppState.IDLE);
-    synthRef.current.speak(utterance);
+    let currentIndex = 0;
+
+    const speakNextSentence = () => {
+        if (currentIndex >= sentences.length) {
+            // Terminou tudo
+            if (onEndCallback) {
+                onEndCallback();
+            } else {
+                setAppState(AppState.IDLE);
+                if (isSentinelMode) {
+                    setTimeout(() => recognitionRef.current?.start(), 300);
+                }
+            }
+            return;
+        }
+
+        const sentence = sentences[currentIndex].trim();
+        if (!sentence) {
+            currentIndex++;
+            speakNextSentence();
+            return;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(sentence);
+        utterance.lang = 'pt-BR';
+        if (voiceRef.current) utterance.voice = voiceRef.current;
+        
+        // Ajustes para voz feminina (Pitch mais alto)
+        utterance.rate = 1.05; // Velocidade natural
+        utterance.pitch = 1.1; // Tom ligeiramente mais agudo (Feminino)
+        
+        utterance.onend = () => {
+            currentIndex++;
+            // Pausa pequena entre frases (Respiração)
+            setTimeout(speakNextSentence, 150);
+        };
+
+        utterance.onerror = () => {
+             console.error("Erro na síntese de fala");
+             setAppState(AppState.IDLE);
+        };
+
+        synthRef.current.speak(utterance);
+    };
+
+    speakNextSentence();
+
   }, [isSentinelMode]);
 
   const handleSendMessage = async (text: string) => {
@@ -277,7 +326,6 @@ const App: React.FC = () => {
       setMessages((prev) => [...prev, newBotMessage]);
       
       if (result.command) {
-          // Se for comando de memória, falamos primeiro depois visualizamos
           speakText(result.text, () => executeCommand(result.command!));
       } else {
           speakText(result.text);
