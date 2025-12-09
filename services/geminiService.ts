@@ -25,7 +25,7 @@ const saveMemory = (fact: string) => {
 };
 
 // --- DEFINIÇÃO DAS FERRAMENTAS ---
-const tools: FunctionDeclaration[] = [
+const functionTools: FunctionDeclaration[] = [
   {
     name: "send_whatsapp",
     description: "Prepare a WhatsApp message. Use ONLY when explicitely asked to send a message.",
@@ -99,11 +99,15 @@ export const sendMessageToGemini = async (
 IDENTIDADE: A.E.O.N. (Advanced Executive Operations Network).
 CONTEXTO TEMPORAL: ${new Date().toLocaleString('pt-BR')}.
 
-DIRETRIZES DE EVOLUÇÃO (MOLDAGEM):
-1.  **Adaptação Absoluta:** Analise a seção 'MEMÓRIA NEURAL' acima. Se o usuário pediu para você ser engraçado, SEJA engraçado. Se pediu respostas técnicas, SEJA técnico.
-2.  **Evolução Constante:** Se o usuário corrigir seu comportamento (ex: "não fale assim"), use a ferramenta 'save_memory' para gravar essa preferência como uma regra permanente.
-3.  **Personalidade Base:** Por padrão, você é sofisticado, eficiente e leal (estilo J.A.R.V.I.S.), MAS isso deve ser sobrescrito pelas preferências do usuário armazenadas na memória.
-4.  **Fala Natural:** Não use listas com marcadores ou asteriscos. Fale como um humano conversando pelo telefone.
+CAPACIDADES:
+- Você tem acesso à ferramenta 'googleSearch' para buscar informações em tempo real na internet. Use-a sempre que perguntarem sobre notícias, clima, esportes ou fatos recentes.
+- Você pode controlar apps (WhatsApp, Agenda) e criar arquivos.
+
+DIRETRIZES DE VOZ E PERSONALIDADE:
+1.  **Humanização Extrema:** Não use formatação de texto (negrito, itálico, listas, links markdown). O texto será LIDO EM VOZ ALTA. Use pontuação para ditar o ritmo.
+2.  **Concisão Inteligente:** Vá direto ao ponto. Evite preâmbulos como "Com base na minha pesquisa". Dê a resposta.
+3.  **Adaptação:** Analise a 'MEMÓRIA NEURAL'. Adapte seu humor e formalidade conforme o histórico.
+4.  **Fontes:** Se usar dados da internet, integre a informação naturalmente na frase, sem citar URLs explicitamente na fala (ex: "Segundo o G1...", e não "Segundo www ponto g1...").
 
 ${memoryContext}
 `;
@@ -118,7 +122,11 @@ ${memoryContext}
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: 0.7,
-        tools: [{ functionDeclarations: tools }], 
+        // Combinação de Ferramentas: Pesquisa + Funções
+        tools: [
+            { googleSearch: {} }, 
+            { functionDeclarations: functionTools }
+        ], 
       },
       history: chatHistory,
     });
@@ -133,7 +141,6 @@ ${memoryContext}
     let responseText = result.text || "";
 
     if (functionCalls && functionCalls.length > 0) {
-        // O Gemini pode chamar múltiplas funções, vamos iterar (embora geralmente seja uma por vez neste caso)
         for (const call of functionCalls) {
             const args = call.args as any;
 
@@ -150,26 +157,28 @@ ${memoryContext}
                 responseText = responseText || "Protocolo de agenda iniciado.";
             }
             else if (call.name === 'save_memory') {
-                // Execução interna (Server-side simulation)
                 saveMemory(args.fact);
-                // Retornamos um comando especial para a UI piscar, mas o texto continua
                 command = { type: 'MEMORY_SAVE', payload: args.fact };
-                // Se não houver texto, geramos um feedback sutil
                 if (!responseText) responseText = "Entendido. Protocolo de comportamento atualizado.";
             }
         }
     }
     
+    // Fallback text if functionality was called but no text returned
     if (!responseText && command && command.type !== 'MEMORY_SAVE') {
         responseText = "Comando executado.";
     }
     
-    const cleanText = responseText.replace(/[*#_`]/g, ''); 
-    
+    // Limpeza de texto para Speech Synthesis (Remove URLs, Markdown, etc)
+    const cleanText = responseText
+        .replace(/\[.*?\]\(.*?\)/g, '') // Remove links markdown [texto](url)
+        .replace(/[*#_`]/g, '') // Remove formatacao
+        .replace(/https?:\/\/\S+/g, ''); // Remove urls soltas
+
     return { text: cleanText, command };
 
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return { text: "Falha nos sistemas centrais. Tentando reconexão." };
+    return { text: "Falha na conexão com os servidores centrais. Verifique a rede." };
   }
 };
